@@ -1,7 +1,11 @@
+# Script to restrict access to a folder that will be used for S3 guarded objects
+# In other words, any meta-data changing actions on objects in this folder are denied
+# to everyone except the IAM Role that is running on an S3 guarded cluster.
+
 readonly INSTANCE_POLICY_ROLE_NAME=awsUsWest2SeInstanceProfile
 readonly INSTANCE_POLICY_ARN="arn:aws:iam::007856030109:role/awsUsWest2SeInstanceProfile"
 readonly S3_GUARD_FOLDER=S3GuardOnly
-readonly S3_BUCKET=aabbcc11
+readonly S3_BUCKET=aabbcc33
 
 ID=$(aws iam get-role --role-name awsUsWest2SeInstanceProfile --output json | jq -r '.Role.RoleId')
 
@@ -11,15 +15,14 @@ function create_policy_json() {
     "Version": "2012-10-17",
     "Statement": [
 	{
-	    "Sid": "Prevent inadventent access to S3 Guard Folder",
+	    "Sid": "Prevent inadvertent access to ${S3_BUCKET:?}/${S3_GUARD_FOLDER:?}",
 	    "Effect": "Deny",
 	    "Principal": {
 		"AWS": "*"
 	    },
 	    "Action": [
 		"s3:DeleteObject",
-		"s3:GetObject",
-		"s3:PutObject"
+		"s3:GetObject"
 	    ],
 	    "Resource": [
 		"arn:aws:s3:::${S3_BUCKET:?}/${S3_GUARD_FOLDER:?}/*",
@@ -33,12 +36,21 @@ function create_policy_json() {
 		}
 	    }
 	}
-
     ]
 }
 EOF
 }
 
 policy=$(create_policy_json | jq '.')
-aws s3api put-bucket-policy --bucket ${S3_BUCKET:?} --policy "${policy}"
+
+echo
+echo The policy to be implemented for ${S3_BUCKET:?}:
+echo $policy | jq '.'
+
+aws s3api put-bucket-policy --bucket ${S3_BUCKET:?} --policy "${policy}" || {
+    echo
+    echo Failing policy:
+    echo
+    echo $policy | jq '.' 
+    }
 
