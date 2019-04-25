@@ -1,0 +1,16 @@
+* Prevent Invalid use of S3Guard managed Folders
+The script =create_s3_guard_policy.sh= will, given the name of an
+existing cluster and an s3 bucket/folder reference, provide an s3
+bucket policy which will limit the modification of objects placed in
+that folder to only the IAM instance profile of the given cluster.
+
+The purpose of this policy is to greatly reduce the chance of someone
+changing the objects that S3Guard is managing.
+* Execution
+Run the script directly if you have the AWS and Altus CLIs installed.
+
+Otherwise run the script using a docker image, thus:
+#+BEGIN_SRC sh
+docker run -t -i -v $HOME/.aws:/root/.aws -v $HOME/.altus:/root/.altus tobyhferguson/create_s3_guard_policy:latest
+#+END_SRC
+
