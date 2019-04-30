@@ -1,4 +1,4 @@
-* Prevent Invalid use of S3Guard managed Folders
+* Prevent Invalid Modification of S3Guard Managed Folders
 The script =create_s3_guard_policy.sh= will, given the name of an
 existing cluster and an s3 bucket/folder reference, provide an s3
 bucket policy which will limit the modification of objects placed in
@@ -7,10 +7,23 @@ that folder to only the IAM instance profile of the given cluster.
 The purpose of this policy is to greatly reduce the chance of someone
 changing the objects that S3Guard is managing.
 * Execution
-Run the script directly if you have the AWS and Altus CLIs installed.
+To create a policy that will ensure that only the IAM role associated
+with CLUSTER is able to modify the FOLDER in BUCKET one can:
 
-Otherwise run the script using a docker image, thus:
-#+BEGIN_SRC sh
-docker run -t -i -v $HOME/.aws:/root/.aws -v $HOME/.altus:/root/.altus tobyhferguson/create_s3_guard_policy:latest
+- run the script directly (assuming you have the AWS and Altus CLIs installed)
+#+BEGIN_SRC 
+./create_s3_guard_policy.sh CLUSTER s3a://BUCKET/FOLDER
 #+END_SRC
-
+- Otherwise run the script using a docker image, either directly:
+#+BEGIN_SRC sh
+docker run -t -i --rm -v $HOME/.aws:/root/.aws -v $HOME/.altus:/root/.altus tobyhferguson/s3guard_policy:latest CLUSTER s3a://BUCKET/FOLDER
+#+END_SRC
+- using the helper script =dr_create_s3_guard_policy.sh=
+* Prerequisites
+We assume that:
+- the AWS is [[https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html][installed]] and [[https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html][configured]];
+- the Altus Client is [[https://www.cloudera.com/documentation/altus/topics/alt_client_setup.html][setup]];
+- Optional. Docker is [[https://docs.docker.com/install/][installed]].
+* Installation
+- If running directly, install =create_s3_guard_policy.sh= as an executable on your PATH
+- If running via docker, optionally install =dr_create_s3_guard_policy.sh= as an executable on your PATH
