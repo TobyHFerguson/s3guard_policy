@@ -1,8 +1,9 @@
 * Prevent Invalid Modification of S3Guard Managed Folders
 The script =create_s3_guard_policy.sh= will, given the name of an
-existing cluster and an s3 bucket/folder reference, provide an s3
-bucket policy which will limit the modification of objects placed in
-that folder to only the IAM instance profile of the given cluster.
+existing cluster (dataware or dataeng) and an s3 bucket/folder
+reference (neither the bucker nor the folder need exist), provide an
+s3 bucket policy which will limit the modification of objects placed
+in that folder to only the IAM instance profile of the given cluster.
 
 The purpose of this policy is to greatly reduce the chance of someone
 changing the objects that S3Guard is managing.

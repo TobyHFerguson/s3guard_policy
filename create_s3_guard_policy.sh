@@ -16,7 +16,7 @@ EOF
 
 function error() {
     echo "$(basename $0): ERROR: $*" 1>&2
-    echo
+    echo 1>&2
     usage
     exit 1;
 }
@@ -45,8 +45,18 @@ readonly S3_BUCKET=${BUCKET_FOLDER%%/*}
 # Set this so that failures in pipes will be signalled properly
 set -o pipefail
 
+function getclusterdescription() {
+    local cd=$(${ALTUS:?} dataeng describe-cluster --cluster-name ${CLUSTER_NAME:?} 2>/dev/null || ${ALTUS:?} dataware describe-cluster --cluster-name ${CLUSTER_NAME:?} 2>/dev/null)
+    if [ -z ${cd} ]
+    then
+	error "Couldn't find cluster named ${CLUSTER_NAME:?}"
+    else
+	echo $cd
+    fi	
+}
+
 function getenvironmentcrn() {
-    ${ALTUS:?} dataeng describe-cluster --cluster-name ${CLUSTER_NAME:?} | jq -r '.cluster.environmentCrn'
+    getclusterdescription | jq -r '.cluster.environmentCrn'
 }
 
 # Get the instance profile name given a cluster
