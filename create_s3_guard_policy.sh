@@ -3,6 +3,40 @@
 # cluster -> Environment -> IAM Instance Profile -> Role id
 # get a cluster environment's crn
 
+function usage() {
+    cat 1>&2 <<EOF
+Usage: $(basename $0) [-l altus profile] [-w aws profile] cluster s3_url
+
+       Given an Altus cluster name and an AWS folder, create the policy that will prevent S3Guard confusion
+
+       -l altus profile: Use the given profile for altus
+       -w aws profile:   Use the given profile for aws
+EOF
+}
+
+function error() {
+    echo "$(basename $0): ERROR: $*" 1>&2
+    echo
+    usage
+    exit 1;
+}
+
+ALTUS=altus
+AWS=AWS
+while getopts ":l:w:" opt
+do
+    case ${opt} in
+	l) ALTUS="altus --profile $OPTARG";;
+	w) AWS="aws --profile $OPTARG";;
+	:) error "Invalid option: ${OPTARG} requires an argument";;
+	\?) error "Unknown option: -${OPTARG}";;
+    esac
+done
+
+shift $((OPTIND -1))
+
+[ $# -ne 2 ] && { error "Unexpected number of parameters: $#; Expected 2"; }
+
 readonly CLUSTER_NAME=${1:?"No cluster name provided"}
 readonly S3_FOLDER_URL=${2:?"No S3 folder URL provided"}
 readonly BUCKET_FOLDER=${S3_FOLDER_URL#s3*://}
@@ -12,14 +46,14 @@ readonly S3_BUCKET=${BUCKET_FOLDER%%/*}
 set -o pipefail
 
 function getenvironmentcrn() {
-    altus dataeng describe-cluster --cluster-name ${CLUSTER_NAME:?} | jq -r '.cluster.environmentCrn'
+    ${ALTUS:?} dataeng describe-cluster --cluster-name ${CLUSTER_NAME:?} | jq -r '.cluster.environmentCrn'
 }
 
 # Get the instance profile name given a cluster
 function getinstanceprofilename() {
     local cluster_crn=$(getenvironmentcrn ${CLUSTER_NAME:?})
     [ -z "${cluster_crn}" ] && { return 15; }
-    altus environments list-environments |
+    ${ALTUS:?} environments list-environments |
 	jq -r --arg CRN  ${cluster_crn:?} '.environments[] | select(.crn == $CRN) | .awsDetails.instanceProfileName'
 }
 
@@ -28,7 +62,7 @@ function getinstanceprofilename() {
 function getawsroleid() {
     local pname=$(getinstanceprofilename ${CLUSTER_NAME:?})
     [ -z "${pname}" ] && { return 20; }
-    aws iam get-instance-profile --instance-profile-name ${pname:?} --output json |
+    ${AWS:?} iam get-instance-profile --instance-profile-name ${pname:?} --output json |
 	jq -r '.InstanceProfile.Roles[0].RoleId'
 }
 
@@ -63,7 +97,7 @@ EOF
 }
 
 function write_policy() {
-    if aws s3api put-bucket-policy --bucket ${S3_BUCKET:?} --policy "${policy}"
+    if ${AWS:?} s3api put-bucket-policy --bucket ${S3_BUCKET:?} --policy "${policy}"
     then
 	echo "Policy written"
     else
@@ -81,7 +115,7 @@ function replace_policy() {
 }
 
  # Will be null if no policy
-readonly opolicy=$(aws s3api get-bucket-policy --bucket ${S3_BUCKET:?} 2>/dev/null)
+readonly opolicy=$(${AWS:?} s3api get-bucket-policy --bucket ${S3_BUCKET:?} 2>/dev/null)
 policy=$(create_policy_json) || { exit $?; }
 
 # Enter here with a possibly null old policy, and a new policy.

@@ -16,9 +16,11 @@ with CLUSTER is able to modify the FOLDER in BUCKET one can:
 #+END_SRC
 - Otherwise run the script using a docker image, either directly:
 #+BEGIN_SRC sh
-docker run -t -i --rm -v $HOME/.aws:/root/.aws -v $HOME/.altus:/root/.altus tobyhferguson/s3guard_policy:latest CLUSTER s3a://BUCKET/FOLDER
+docker run -t -i --rm --read-only -v /tmp -v $HOME/.aws:/root/.aws:ro -v $HOME/.altus:/root/.altus:ro tobyhferguson/s3guard_policy:latest CLUSTER s3a://BUCKET/FOLDER
 #+END_SRC
 - using the helper script =dr_create_s3_guard_policy.sh=
+
+Note that we mount the file-system readonly, including the bind volumes, except for the /tmp volume, which must be read/write for the here documents in the underlying shell script.
 * Prerequisites
 We assume that:
 - the AWS is [[https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html][installed]] and [[https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html][configured]];
