@@ -73,13 +73,13 @@ function getinstanceprofilename() {
     local ipn
     case $NAMETYPE in
 	"either" ) ipn=$(getinstanceprofilenamefromclustername || getinstanceprofilenamefromenvironmentname );
-		   [ -z "${ipn}" ] && { error "No cluster nor environment named $NAME found"; }
+		   [ -z "${ipn}" ] && { error "No AWS cluster nor environment named $NAME found"; }
 		   ;;
 	"cluster") ipn=$(getinstanceprofilenamefromclustername );
-		   [ -z "${ipn}" ] && { error "No cluster named $NAME found"; }
+		   [ -z "${ipn}" ] && { error "No AWS cluster named $NAME found"; }
 		   ;;
 	"environment") ipn=$(getinstanceprofilenamefromenvironmentname);
-		       [ -z "${ipn}" ] && { error "No environment named $NAME found"; }
+		       [ -z "${ipn}" ] && { error "No AWS environment named $NAME found"; }
 		       ;;
 	*) error "Internal error. Unexpected NAMETYPE: $NAMETYPE";;
     esac
@@ -91,13 +91,13 @@ function getinstanceprofilenamefromclustername() {
     local env_crn=$(getenvironmentcrn)
     [ -z "${env_crn}" ] && { return 15; }
     ${ALTUS:?} environments list-environments |
-	jq -r --arg CRN  ${env_crn:?} '.environments[] | select(.crn == $CRN) | .awsDetails.instanceProfileName'
+	jq -r --arg CRN  ${env_crn:?} '.environments[] | select(.crn == $CRN) | select(.type == "AWS") | .awsDetails.instanceProfileName'
 }
 
 # return the instance profile name from an environment name
 function getinstanceprofilenamefromenvironmentname() {
     ${ALTUS:?} environments list-environments |
-	jq -r --arg ENAME  ${NAME} '.environments[] | select(.environmentName == $ENAME) | .awsDetails.instanceProfileName'
+	jq -r --arg ENAME  ${NAME} '.environments[] | select(.environmentName == $ENAME) | select(.type == "AWS") | .awsDetails.instanceProfileName'
 }
 
 # Handle the case when the old and new policies have lexical differences
