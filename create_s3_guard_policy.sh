@@ -47,7 +47,7 @@ function error() {
 
 # return the Aws IAM Role Id given a cluster name
 function getawsroleid() {
-    local pname=$(getinstanceprofilename ${CLUSTER_NAME:?})
+    local pname=$(getinstanceprofilename)
     [ -z "${pname}" ] && { return 20; }
     ${AWS:?} iam get-instance-profile --instance-profile-name ${pname:?} --output json |
 	jq -r '.InstanceProfile.Roles[0].RoleId'
@@ -56,26 +56,48 @@ function getawsroleid() {
 
 # return the json cluster description given the cluster name
 function getclusterdescription() {
-    local cd=$(${ALTUS:?} dataeng describe-cluster --cluster-name ${CLUSTER_NAME:?} 2>/dev/null || ${ALTUS:?} dataware describe-cluster --cluster-name ${CLUSTER_NAME:?} 2>/dev/null)
-    if [ -z "${cd}" ]
-    then
-	error "Couldn't find cluster named ${CLUSTER_NAME:?}"
-    else
-	echo $cd
-    fi	
+    ${ALTUS:?} dataeng describe-cluster --cluster-name ${NAME:?} 2>/dev/null || ${ALTUS:?} dataware describe-cluster --cluster-name ${NAME:?} 2>/dev/null
 }
 
-# return the environment crn given the cluster name
+# get the environment name from NAME, first treating it as a cluster name, otherwise it is the NAME
 function getenvironmentcrn() {
-    getclusterdescription | jq -r '.cluster.environmentCrn'
+    local cd=$(getclusterdescription)
+    if [ ! -z "$cd" ]
+    then
+	echo $cd | jq -r '.cluster.environmentCrn'
+    fi
 }
 
-# return the instance profile name given a cluster
+# Get the instance profile name given a name which could be a cluster or an environment name
 function getinstanceprofilename() {
-    local cluster_crn=$(getenvironmentcrn ${CLUSTER_NAME:?})
-    [ -z "${cluster_crn}" ] && { return 15; }
+    local ipn
+    case $NAMETYPE in
+	"either" ) ipn=$(getinstanceprofilenamefromclustername || getinstanceprofilenamefromenvironmentname );
+		   [ -z "${ipn}" ] && { error "No cluster nor environment named $NAME found"; }
+		   ;;
+	"cluster") ipn=$(getinstanceprofilenamefromclustername );
+		   [ -z "${ipn}" ] && { error "No cluster named $NAME found"; }
+		   ;;
+	"environment") ipn=$(getinstanceprofilenamefromenvironmentname);
+		       [ -z "${ipn}" ] && { error "No environment named $NAME found"; }
+		       ;;
+	*) error "Internal error. Unexpected NAMETYPE: $NAMETYPE";;
+    esac
+    echo $ipn
+}
+
+# return the instance profile name given a cluster name
+function getinstanceprofilenamefromclustername() {
+    local env_crn=$(getenvironmentcrn)
+    [ -z "${env_crn}" ] && { return 15; }
     ${ALTUS:?} environments list-environments |
-	jq -r --arg CRN  ${cluster_crn:?} '.environments[] | select(.crn == $CRN) | .awsDetails.instanceProfileName'
+	jq -r --arg CRN  ${env_crn:?} '.environments[] | select(.crn == $CRN) | .awsDetails.instanceProfileName'
+}
+
+# return the instance profile name from an environment name
+function getinstanceprofilenamefromenvironmentname() {
+    ${ALTUS:?} environments list-environments |
+	jq -r --arg ENAME  ${NAME} '.environments[] | select(.environmentName == $ENAME) | .awsDetails.instanceProfileName'
 }
 
 # Handle the case when the old and new policies have lexical differences
@@ -121,12 +143,26 @@ EOF
 
 function usage() {
     cat 1>&2 <<EOF
-Usage: $(basename $0) [-l altus profile] [-w aws profile] cluster s3_url
+Usage: $(basename $0) [-c | -e ] [-l altus profile] [-w aws profile] name s3_url
 
-       Given an Altus cluster name and an AWS folder, create the policy that will prevent S3Guard confusion
+       Given either an Altus cluster or environment name (cluster is
+       looked for first, then an environment, unless the -c|-e flag
+       is given) and an AWS folder, create the policy that will
+       prevent S3Guard confusion.
 
+       -c indicate that name is the name of a cluster. It is an error 
+          if this cluster cannot be found.
+       -e indicate that name is the name of an environment. It is an 
+          error if this environment cannot be found.
        -l altus profile: Use the given profile for altus
        -w aws profile:   Use the given profile for aws
+
+       When neither the -c nor the -e flag is found search for a
+       cluster first, and then an environment. It is an error if
+       neither can be found using the given name.
+
+       For any option, the last option found determines the value option.
+
 EOF
 }
 
@@ -153,29 +189,34 @@ function write_policy() {
 ### MAIN
 ALTUS=altus
 AWS=AWS
+NAMETYPE=either
 
 # Handle the -l altus_profile and -w aws_profile options
-while getopts ":l:w:" opt
+while getopts ":cel:w:" opt
 do
     case ${opt} in
-	l) ALTUS="altus --profile $OPTARG";;
-	w) AWS="aws --profile $OPTARG";;
+	c) NAMETYPE=cluster;;
+	e) NAMETYPE=environment;;
+	l) ALTUS="altus --profile ${OPTARG}";;
+	w) AWS="aws --profile ${OPTARG}";;
 	:) error "Invalid option: ${OPTARG} requires an argument";;
 	\?) error "Unknown option: -${OPTARG}";;
     esac
 done
 shift $((OPTIND -1))
 
-# Prevent updates to ALTUS and AWS commands
+# Prevent updates to variables defined above
 typeset -r ALTUS
 typeset -r AWS
+typeset -r NAMETYPE
+
 
 # Check for the cluster and s3 url args
-[ $# -ne 2 ] && { error "Unexpected number of parameters: $#; Expected 2"; }
+[ $# -ne 2 ] && { error "Unexpected number of parameters: $#; Expected "; }
 
 # Provide for easy to remember names
-readonly CLUSTER_NAME=${1:?"No cluster name provided"}
-readonly S3_FOLDER_URL=${2:?"No S3 folder URL provided"}
+readonly NAME=$1
+readonly S3_FOLDER_URL=$2
 # We'll accept any kind of url and assume that the bucket/folder stuff is after the first '*//'
 readonly BUCKET_FOLDER=${S3_FOLDER_URL#*://}
 readonly S3_BUCKET=${BUCKET_FOLDER%%/*}
