@@ -47,7 +47,7 @@ set -o pipefail
 
 function getclusterdescription() {
     local cd=$(${ALTUS:?} dataeng describe-cluster --cluster-name ${CLUSTER_NAME:?} 2>/dev/null || ${ALTUS:?} dataware describe-cluster --cluster-name ${CLUSTER_NAME:?} 2>/dev/null)
-    if [ -z ${cd} ]
+    if [ -z "${cd}" ]
     then
 	error "Couldn't find cluster named ${CLUSTER_NAME:?}"
     else
@@ -106,6 +106,21 @@ function create_policy_json() {
 EOF
 }
 
+# Test that the S3_BUCKET exists
+function bucket_exists_p() {
+    ${AWS:?} s3api list-buckets --query "Buckets[?Name=='${S3_BUCKET:?}'].Name" | grep -q "${S3_BUCKET:?}"
+}
+
+# Offer to replace/update the policy iff the bucket exists
+function replace_policy() {
+    read -p "Put the policy in place for the bucket? (Yes/No): " answer
+    if [ "${answer,,}" == "yes" ]
+    then
+	write_policy
+    fi
+}
+
+# Write the bucket policy
 function write_policy() {
     if ${AWS:?} s3api put-bucket-policy --bucket ${S3_BUCKET:?} --policy "${policy}"
     then
@@ -116,13 +131,6 @@ function write_policy() {
     fi
 }
 
-function replace_policy() {
-    read -p "Put the policy in place for the bucket? (Yes/No): " answer
-    if [ "${answer,,}" == "yes" ]
-    then
-	write_policy
-    fi
-}
 
  # Will be null if no policy
 readonly opolicy=$(${AWS:?} s3api get-bucket-policy --bucket ${S3_BUCKET:?} 2>/dev/null)
@@ -151,20 +159,37 @@ EOF
 
 function handle_differing_policies() {
     cat <<EOF
-The two policies differ. Here's an sdiff(1) output, old on the left, changed on the right
+The two policies differ. Here's an sdiff(1) output, common lines on the left, changed lines on the right
 
 EOF
     sdiff -W  -l  <(echo $opolicy | jq '.') <(echo $policy | jq '.')
     replace_policy
 }
 
-if [ -z "$opolicy" ]
-then
-    handle_no_old_policy
-elif cmp -s <(echo "$opolicy" | jq '.') <(echo "$policy" | jq '.')
-then
-    handle_identical_policies
-else
-    handle_differing_policies
-fi
+# Handle the situation where there's no bucket to write the policy to
+function handle_no_bucket() {
+    cat <<EOF
+The required policy is:
 
+$(echo $policy | jq '.')
+
+However the bucket "${S3_BUCKET:?}" doesn't exist, so the policy cannot be written to that bucket.
+EOF
+}
+
+
+### MAIN
+if ! bucket_exists_p
+then
+    handle_no_bucket
+else
+    if [ -z "$opolicy" ]
+    then
+	handle_no_old_policy
+    elif cmp -s <(echo "$opolicy" | jq '.') <(echo "$policy" | jq '.')
+    then
+	handle_identical_policies
+    else
+	handle_differing_policies
+    fi
+fi
