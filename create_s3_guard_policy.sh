@@ -38,10 +38,17 @@ function create_policy_json() {
 EOF
 }
 
+# Echo args to stderr. If $1 is -u then print usage afterwards on stdout
 function error() {
-    echo "$(basename $0): ERROR: $*" 1>&2
-    echo 1>&2
-    usage
+    if [ "$1" == "-u" ]
+    then
+	shift
+	echo "$(basename $0): ERROR: $*" 1>&2
+	echo
+	usage
+    else
+	echo "$(basename $0): ERROR: $*" 1>&2
+    fi
     exit 1;
 }
 
@@ -142,7 +149,7 @@ EOF
 }
 
 function usage() {
-    cat 1>&2 <<EOF
+    cat <<EOF
 Usage: $(basename $0) [-c | -e ] [-l altus profile] [-w aws profile] name s3_url
 
        Given either an Altus cluster or environment name (cluster is
@@ -199,8 +206,8 @@ do
 	e) NAMETYPE=environment;;
 	l) ALTUS="altus --profile ${OPTARG}";;
 	w) AWS="aws --profile ${OPTARG}";;
-	:) error "Invalid option: ${OPTARG} requires an argument";;
-	\?) error "Unknown option: -${OPTARG}";;
+	:) error -u "Invalid option: ${OPTARG} requires an argument";;
+	\?) error -u "Unknown option: -${OPTARG}";;
     esac
 done
 shift $((OPTIND -1))
@@ -212,7 +219,7 @@ typeset -r NAMETYPE
 
 
 # Check for the cluster and s3 url args
-[ $# -ne 2 ] && { error "Unexpected number of parameters: $#; Expected "; }
+[ $# -ne 2 ] && { error -u "Unexpected number of parameters: $#; Expected "; }
 
 # Provide for easy to remember names
 readonly NAME=$1
